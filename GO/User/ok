@@ -1,0 +1,108 @@
+func checkCredentials(w http.ResponseWriter, r *http.Request) {
+	// Buka koneksi ke database
+	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/service_user")
+	if err != nil {
+		// Jika terjadi kesalahan saat membuka koneksi ke database
+		http.Error(w, "Service sedang bermasalah", http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+
+	// Ambil data username dan password dari query parameter
+	username := r.URL.Query().Get("username")
+	password := r.URL.Query().Get("password")
+
+	// Periksa apakah username dan password cocok dalam database
+	var (
+		id int // ID pengguna
+	)
+	row := db.QueryRow("SELECT id FROM users WHERE username = ? AND password = ?", username, password)
+	err = row.Scan(&id)
+
+	// Jika cocok, kirim status kode 200 (OK) bersama dengan ID pengguna dalam bentuk JSON
+	w.Header().Set("Content-Type", "application/json")
+	response := map[string]interface{}{
+		"status": "success",
+		"id":     id,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+
+public function login(Request $request)
+{
+	$client = new Client(['base_uri' => 'http://localhost:9004']);
+
+	try {
+		$response = $client->request('GET', '/check-credentials', [
+			'query' => [
+				'username' => $request->input('username'),
+				'password' => $request->input('password')
+			]
+		]);
+
+		
+	} catch (\Exception $e) {
+		return redirect()->route('login_form')->with('error', $e->getMessage());
+	}
+}
+
+
+func addUser(w http.ResponseWriter, r *http.Request) {
+	// Buka koneksi ke database
+	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/service_user")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+
+	// Parse data yang diterima dari body request
+	var user map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Periksa apakah username sudah ada dalam database
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM users WHERE username = ?", user["username"]).Scan(&count)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if count > 0 {
+		// Jika username sudah ada, kirimkan response bahwa user tidak ditambahkan
+		response := map[string]interface{}{
+			"message": "Username already exists. User not added.",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	// Eksekusi query untuk menambahkan pengguna ke dalam database
+	result, err := db.Exec("INSERT INTO users (username, password, email, role) VALUES (?, ?, ?, ?)",
+		user["username"], user["password"], user["email"], user["role"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Ambil ID pengguna yang baru saja ditambahkan
+	userID, err := result.LastInsertId()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Kirimkan balasan bahwa pengguna telah ditambahkan
+	response := map[string]interface{}{
+		"message": "User added successfully",
+		"userID":  userID,
+	}
+	// Set header response sebagai JSON
+	w.Header().Set("Content-Type", "application/json")
+	// Encode hasil ke format JSON dan kirimkan sebagai response
+	json.NewEncoder(w).Encode(response)
+}
